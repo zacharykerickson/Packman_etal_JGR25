@@ -1,6 +1,9 @@
 # Packman_etal_JGR25
 Code to conduct analyses and make figures found in Packman et al. (submitted to JGR-Oceans)
 
+## Authorship
+The code contained herein was first written by Sarah Packman (Harvard) during a NOAA Lapenta Internship at NOAA Pacific Marine Environmental Laboratory (PMEL), and afterwards modified by Zachary Erickson (PMEL).
+
 ## Python and Jupyter files:
 
 - trend_data.py - inputs RFROM .nc files and outputs the seasonal trend coefficients at distinct pressure levels into the file trend.nc  
