@@ -1,8 +1,75 @@
 import xarray
 import numpy as np
+import pandas as pd
+import datetime
 from glob import glob
-from mhws_functions import detrend_data
 from netCDF4 import Dataset
+
+# Implementing decimal year fxn found here: https://stackoverflow.com/questions/6451655/how-to-convert-python-datetime-dates-to-decimal-float-years
+# Input: array of np.datetime64 objects
+# Output: same array converted into decimal year format, to be used for fitting models to a time series
+def to_decimal_year(time):
+    dt = pd.to_datetime(time) # converts np.datetime64 into datetime object
+    dec_year = []
+    for i in range(len(dt)):
+        start = datetime.date(dt[i].year,1,1).toordinal()
+        year_length = datetime.date(dt[i].year+1, 1, 1).toordinal() - start
+        dec_year.append(dt[i].year + (float(dt[i].toordinal() - start) / year_length)) # calculates how much time has passed in the year, divides by year length, then adds to start year
+    return np.array(dec_year)
+
+# Remove trend from data by fitting a series of harmonics
+# Input: array of times, data array, number of harmonics (int), whether or not to remove trend (Boolean)
+# Output: data array with mean, trend and/or seasonal cycle removed if specified
+def detrend_data(t, data, num_harmonics=0, remove_mean=False, remove_trend=False, nc=False):
+    dyr = to_decimal_year(t) # convert time data from date-time to decimal year
+    
+    model = [np.ones(len(dyr)), dyr - np.mean(dyr)]
+    for i in range(num_harmonics): # adding harmonics to model
+        omega = 2*(i+1)*np.pi
+        model.append(np.sin(omega*dyr))
+        model.append(np.cos(omega*dyr))
+    pmodel = np.linalg.pinv(np.array(model))
+    
+    # calculate coefficients / residuals (as specified by input)
+    if nc == True:
+        coefs = np.matmul(pmodel.transpose(), data)
+    else: 
+        coefs = np.matmul(data,pmodel)
+    mean = coefs[0]
+    trend = coefs[1]*(dyr - np.mean(dyr))
+    res_coefs = coefs[2:]
+    seasons_model = [] # initialize model to be populated with code below
+    
+    if remove_mean == True:
+        detrend_data = data - mean    
+    else: 
+        detrend_data = data
+
+    if remove_trend == True: # case for removing both trend and seasonal cycle
+        detrend_data = detrend_data - trend
+        for j in range(0,len(res_coefs),2):
+            omega = (j+2)*np.pi
+            detrend_data = detrend_data-(res_coefs[j]*np.sin(omega*dyr))-(res_coefs[j+1]*np.cos(omega*dyr)) 
+            seasons_model.append(res_coefs[j]*np.sin(omega*dyr))
+            seasons_model.append(res_coefs[j+1]*np.cos(omega*dyr))
+            
+    else: # case for leaving trend, removing seasonal cycle
+        for j in range(0,len(res_coefs),2):
+            omega = (j+2)*np.pi
+            detrend_data = detrend_data-(res_coefs[j]*np.sin(omega*dyr))-(res_coefs[j+1]*np.cos(omega*dyr))
+            seasons_model.append(res_coefs[j]*np.sin(omega*dyr))
+            seasons_model.append(res_coefs[j+1]*np.cos(omega*dyr))
+    
+    seasons_model_final = np.sum(np.array(seasons_model), axis=0)
+    
+    results = {}
+    results['data'] = detrend_data
+    results['coefs'] = coefs
+    results['trend'] = trend
+    results['seasons_model'] = seasons_model_final
+    
+    return results
+
 
 # Extract data
 files = np.sort(glob('/Users/erickson/Documents/Data/RFROM/*.nc'))
